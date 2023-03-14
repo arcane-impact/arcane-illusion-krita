@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ActionCollection version="2" name="Scripts">
+    <Actions category="Scripts">
+        <text>Arcane Illusion</text>
+        <Action name="arcane_illusion_txt2img">
+            <icon></icon>
+            <text>Image Generation...</text>
+            <whatsThis></whatsThis>
+            <toolTip></toolTip>
+            <iconText></iconText>
+            <activationFlags>0</activationFlags><!--https://invent.kde.org/graphics/krita/-/blob/master/libs/ui/kis_action.h#L41-61-->
+            <activationConditions>0</activationConditions><!--https://invent.kde.org/graphics/krita/-/blob/master/libs/ui/kis_action.h#L64-70-->
+            <shortcut>ctrl+alt+shift+i</shortcut>
+            <isCheckable>false</isCheckable>
+            <statusTip></statusTip>
+        </Action>
+    </Actions>
+</ActionCollection>
