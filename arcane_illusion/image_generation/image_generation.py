@@ -3,12 +3,14 @@ from enum import Enum
 from typing import ClassVar
 
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QGridLayout, QComboBox, QMessageBox, \
-    QProgressBar, QPushButton, QSpinBox, QFormLayout, QScrollArea, QPlainTextEdit, QDoubleSpinBox
+    QPushButton, QSpinBox, QFormLayout, QScrollArea, QPlainTextEdit, QDoubleSpinBox, QSizePolicy
 from PyQt5.QtGui import QImage
-from PyQt5.QtCore import QByteArray, QThreadPool, QRunnable, pyqtSlot, qDebug
+from PyQt5.QtCore import QByteArray, QThreadPool, QRunnable, pyqtSlot, qDebug, qWarning, qInfo
 
-from arcane_illusion.image_generation.generation_task import GenerationTask, ProgressTask
 from krita import Krita, DockWidget
+
+from arcane_illusion.image_generation.generation_task import GenerationTask
+from arcane_illusion.widgets import ProgressBar
 
 from arcane_illusion.settings import Parameters
 from arcane_illusion.image_generation.client import Client
@@ -39,25 +41,24 @@ class ImageGeneration(DockWidget):
 
     def _build_ui(self):
         self.setWindowTitle("AI - Image Generation")
+        layout = QVBoxLayout()
 
-        self.widget = QWidget(self)
-        self.widget.setLayout(QVBoxLayout())
-        # self.widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
-        self.setWidget(self.widget)
-
-        self.widget.layout().addLayout(self._build_ui_primary_layout())
-        self.widget.layout().addWidget(self._build_ui_parameters_widget())
+        layout.addLayout(self._build_ui_primary_layout())
+        layout.addWidget(self._build_ui_parameters_widget())
 
         self.generate_button = QPushButton("Generate", self)
-        self.widget.layout().addWidget(self.generate_button)
+        layout.addWidget(self.generate_button)
+        layout.addStretch(0)
+
+        widget = QWidget(self)
+        widget.setLayout(layout)
+
+        self.setWidget(widget)
 
     def _build_ui_primary_layout(self):
         primary_layout = QFormLayout()
 
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setTextVisible(True)
-
+        self.progress_bar = ProgressBar(self)
         primary_layout.addRow("Status", self.progress_bar)
 
         self.model = QComboBox()
@@ -65,22 +66,19 @@ class ImageGeneration(DockWidget):
 
         self.prompt = QPlainTextEdit()
         self.prompt.setPlaceholderText("Place your prompt here")
+        self.prompt.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
         primary_layout.addRow("Prompt", self.prompt)
 
         self.negative = QPlainTextEdit()
         self.negative.setPlaceholderText("Place your negative prompt here")
+        self.negative.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+
         primary_layout.addRow("Negative", self.negative)
 
         return primary_layout
 
     def _build_ui_parameters_widget(self):
-        scroll_area = QScrollArea()
-        scroll_widget = QWidget()
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.setWidgetResizable(True)
-
         grid_layout = QGridLayout()
-        scroll_widget.setLayout(grid_layout)
 
         self.sampler = QComboBox()
         grid_layout.addWidget(QLabel("Sampler"), 0, 0)
@@ -114,7 +112,9 @@ class ImageGeneration(DockWidget):
         grid_layout.addWidget(QLabel("CFG Scale"), 2, 2)
         grid_layout.addWidget(self.cfg_scale, 2, 3)
 
-        return scroll_area
+        widget = QWidget()
+        widget.setLayout(grid_layout)
+        return widget
 
     def _load_options(self):
         try:
@@ -123,25 +123,30 @@ class ImageGeneration(DockWidget):
             self.models = self._client.get_models()
             self.samplers = self._client.get_samplers()
             self._status = Status.Ready
-        except OSError:
+        except OSError as e:
+            qWarning(repr(e))
             self.models = []
             self.samplers = []
             self._status = Status.Error
+            self.error = "Cannot connect to API"
 
     def _update_status(self):
         if self._status == Status.Ready:
-            self.progress_bar.setFormat(Status.Ready.value)
-            self.progress_bar.setValue(100)
-            self.progress_bar.setMaximum(100)
+            self.progress_bar.set_color(ProgressBar.Color.Green)
+            self.progress_bar.set_text("Ready")
+            self.progress_bar.set_busy(False)
         elif self._status == Status.Error:
-            self.progress_bar.setFormat(Status.Error.value)
+            self.progress_bar.set_color(ProgressBar.Color.Red)
+            self.progress_bar.set_text(f"{self.error}")
+            self.progress_bar.set_busy(False)
         elif self._status == Status.Processing:
-            self.progress_bar.setMaximum(100)
-            self.progress_bar.setValue(self.progress)
-            self.progress_bar.setFormat(f"%p% ({self.eta}s)")
+            self.progress_bar.set_color(ProgressBar.Color.Blue)
+            self.progress_bar.set_text("Processing...")
+            self.progress_bar.set_busy(True)
         else:
-            self.progress_bar.setMaximum(0)
-            self.progress_bar.resetFormat()
+            self.progress_bar.set_color(ProgressBar.Color.Yellow)
+            self.progress_bar.set_text("Loading...")
+            self.progress_bar.set_busy(True)
 
     def _update_generate_button(self):
         self.generate_button.setEnabled(self._status == Status.Ready or self._status == Status.Error)
@@ -186,22 +191,11 @@ class ImageGeneration(DockWidget):
         task.signals.started.connect(self._on_task_started)
         task.signals.finished.connect(self._on_task_finished)
         task.signals.error.connect(self._on_task_error)
-        progress_task = ProgressTask(task, self._client.progress)
-        progress_task.signals.progress.connect(self._on_task_progress)
         self._thread_pool.start(task)
-        self._thread_pool.start(progress_task)
 
     @pyqtSlot()
     def _on_task_started(self):
         self._status = Status.Processing
-        self.progress = 0
-        self.eta = -1
-        self._update_ui()
-
-    @pyqtSlot(ProgressResponse)
-    def _on_task_progress(self, response: ProgressResponse):
-        self.progress = int(response.progress * 100)
-        self.eta = int(response.eta_relative)
         self._update_ui()
 
     @pyqtSlot(GenerationResponse)
@@ -211,7 +205,7 @@ class ImageGeneration(DockWidget):
             doc = application.activeDocument()
             root = doc.rootNode()
             prompt = response.parameters["prompt"]
-            qDebug(str(response.parameters))
+            qInfo(f"Image generated with {str(response.parameters)}")
             for index, encoded in enumerate(response.images):
                 buffer = QByteArray.fromRawData(base64.b64decode(encoded))
                 image = QImage.fromData(buffer)
@@ -222,14 +216,18 @@ class ImageGeneration(DockWidget):
                 root.addChildNode(layer, None)
             doc.refreshProjection()
             self._status = Status.Ready
-        except RuntimeError:
+        except Exception as e:
+            qWarning(repr(e))
             self._status = Status.Error
+            self.error = str(e)
         finally:
             self._update_ui()
 
     @pyqtSlot(Exception)
     def _on_task_error(self, e: Exception):
+        qWarning(repr(e))
         self._status = Status.Error
+        self.error = str(e)
         self._update_ui()
 
     def canvasChanged(self, canvas):

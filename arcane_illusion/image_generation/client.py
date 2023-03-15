@@ -36,6 +36,7 @@ class Client:
         return GenerationResponse(**response)
 
     def progress(self):
+        """Not helpful as multiple requests crash Krita"""
         path = "/sdapi/v1/progress"
         response = self._request(path)
         return ProgressResponse(**response)
