@@ -18,7 +18,7 @@ from .status_bar import StatusBar
 
 class _Widget(QWidget):
     _thread_pool: QThreadPool = QThreadPool.globalInstance()
-    status_updated = pyqtSignal([Status], [Status, str])
+    status_updated = pyqtSignal([Status, str])
 
     def __init__(self):
         super().__init__()
@@ -48,11 +48,11 @@ class _Widget(QWidget):
     def _load_options(self):
         try:
             self._parameters.load()
-            self.status_updated.emit(Status.Loading)
+            self.status_updated.emit(Status.Loading, None)
             self._common_parameters.update_model_options(self._client.get_models())
             self._common_parameters.update_sampler_options(self._client.get_samplers())
             self._common_parameters.populate_parameters()
-            self.status_updated.emit(Status.Ready)
+            self.status_updated.emit(Status.Ready, None)
         except OSError as e:
             qWarning(repr(e))
             self.status_updated.emit(Status.Error, "Cannot connect to API")
@@ -75,7 +75,7 @@ class _Widget(QWidget):
 
     @pyqtSlot()
     def _on_task_started(self):
-        self.status_updated.emit(Status.Processing)
+        self.status_updated.emit(Status.Processing, None)
 
     @pyqtSlot(GenerationResponse)
     def _on_task_finished(self, response: GenerationResponse):
@@ -94,7 +94,7 @@ class _Widget(QWidget):
                 layer.setPixelData(QByteArray(ptr.asstring()), 0, 0, image.width(), image.height())
                 root.addChildNode(layer, None)
             doc.refreshProjection()
-            self.status_updated.emit(Status.Ready)
+            self.status_updated.emit(Status.Ready, None)
         except Exception as e:
             qWarning(repr(e))
             self.status_updated.emit(Status.Error, str(e))
